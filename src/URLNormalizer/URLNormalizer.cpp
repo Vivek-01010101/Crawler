@@ -13,18 +13,26 @@ std::string URLNormalizer::normalize(const std::string& baseURL,
     if (result.find("http://") == 0 ||
         result.find("https://") == 0)
     {
-        // keep as is
+        // Keep as is
     }
 
-    // Root-relative
+    // Root-relative URL
     else if (!result.empty() && result[0] == '/')
     {
-        size_t pos = baseURL.find('/', 8);
+        // Find the first '/' after "http://" or "https://"
+        size_t start = baseURL.find("//");
 
-        if (pos != std::string::npos)
-            result = baseURL.substr(0, pos) + result;
-        else
-            result = baseURL + result;
+        if (start != std::string::npos)
+        {
+            start += 2; // Move past "//"
+
+            size_t pos = baseURL.find('/', start);
+
+            if (pos != std::string::npos)
+                result = baseURL.substr(0, pos) + result;
+            else
+                result = baseURL + result;
+        }
     }
 
     // Relative URL
@@ -38,7 +46,7 @@ std::string URLNormalizer::normalize(const std::string& baseURL,
             result = baseURL + "/" + result;
     }
 
-    // Remove fragment
+    // Remove fragment (#section)
     size_t hash = result.find('#');
 
     if (hash != std::string::npos)
@@ -49,4 +57,21 @@ std::string URLNormalizer::normalize(const std::string& baseURL,
         result.pop_back();
 
     return result;
+}
+
+std::string URLNormalizer::getDomain(const std::string& url)
+{
+    size_t start = url.find("//");
+
+    if (start == std::string::npos)
+        return "";
+
+    start += 2;
+
+    size_t end = url.find('/', start);
+
+    if (end == std::string::npos)
+        return url;
+
+    return url.substr(0, end);
 }

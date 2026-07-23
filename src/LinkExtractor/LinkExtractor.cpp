@@ -63,12 +63,13 @@ void LinkExtractor::extractLinks(const std::string& html,
         // Normalize URL
         url = normalizer.normalize(baseURL, url);
 
-        // Stay on the same website
-        if (url.find("https://quotes.toscrape.com") != 0)
-        {
-            pos = end + 1;
-            continue;
-        }
+        std::string seedDomain = normalizer.getDomain(baseURL);
+
+            if (url.find(seedDomain) != 0)
+            {
+                pos = end + 1;
+                continue;
+            }
 
         // Add to frontier
         frontier.push(URLDepth(url, currentDepth + 1));
