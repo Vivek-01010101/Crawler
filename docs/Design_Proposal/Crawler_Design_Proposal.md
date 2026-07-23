@@ -34,10 +34,10 @@ struct URLDepth {
 class Frontier {
 public:
     Frontier();                    // Constructor
-    void push(URLDepth item);      // Adds URL-depth pair to end
+    void push(const URLDepth& item);      // Adds URL-depth pair to end
     URLDepth pop();                // Removes and returns from front
-    bool empty();                  // Checks if queue is empty
-    int size();                    // Returns number of pending items
+    bool empty() const;            // Checks if queue is empty
+    int size() const;              // Returns number of pending items
 };
 ```
 
@@ -65,7 +65,7 @@ public:
 
 ## iii) Page Storage
 
-**Purpose:** Stores crawled pages persistently for **Project 03 Indexer** to consume.
+**Purpose:** Stores crawled pages for **Project 03 Indexer** to consume.
 
 ```cpp
 class PageStorage {
@@ -83,22 +83,20 @@ public:
 
 ## iv) Crawler
 
-**Purpose:** Orchestrates all components and runs the main crawl loop.
+**Purpose:** Execute all components and runs the main crawl loop.
 
 ```cpp
 class Crawler {
 public:
-    Crawler(int maxDepth, int maxPages);   // Constructor with limits
-    void crawl(string seedURL);            // Starts crawling from seed
-    void setLogging(bool enabled);         // Toggle logging on/off
+    Crawler();
+    void crawl(const std::string& seedURL);
 
 private:
     Frontier frontier;
+    Fetcher fetcher;
+    LinkExtractor extractor;
     SeenStore seen;
     PageStorage storage;
-    int maxDepth;
-    int maxPages;
-    bool logging;
 };
 ```
 
@@ -114,36 +112,16 @@ private:
 
 ## Frontier – Linked List Based Queue
 
-```cpp
-class Frontier {
-private:
-    struct Node {
-        URLDepth data;
-        Node* next;
-    };
-
-    Node* head;   // Points to front of queue
-    Node* tail;   // Points to back of queue
-    int count;    // Number of elements in queue
-};
-```
 
 The linked list stores elements as separate nodes.
 
 - The **head** pointer tracks the front for **O(1)** pop operations.
 - The **tail** pointer tracks the back for **O(1)** push operations.
-- Each node contains a `URLDepth` and a pointer to the next node.
 
 ---
 
 ## SeenStore – HashMap Based
 
-```cpp
-class SeenStore {
-private:
-    HashMap<string, bool> seen;
-};
-```
 
 Uses **Project 01's HashMap implementation**.
 
@@ -155,19 +133,14 @@ Uses **Project 01's HashMap implementation**.
 
 ## PageStorage – File per Page
 
-```cpp
-class PageStorage {
-private:
-    string storageDir;
-    HashMap<string, int> urlToId;   // Maps URL to file ID
-    int nextId;                     // Auto-incrementing ID counter
-};
-```
-
 Each page is stored as a separate text file.
 
 - A HashMap maps URLs to numeric IDs for fast lookup.
 - `nextId` auto-increments for every new page.
+
+## Fetcher - 
+
+libcurl is used to fetch HTML pages. This crawler is for static sites, so here libcurl will work best. But for dynamic sites Selenium need to use.
 
 ---
 
@@ -189,16 +162,6 @@ https://books.toscrape.com/catalogue/page-2.html
 <!DOCTYPE html><html>...
 ```
 
----
-
-## URLDepth Pair
-
-```cpp
-struct URLDepth {
-    string url;
-    int depth;
-};
-```
 
 ---
 
@@ -232,11 +195,11 @@ Prevents the same page from being crawled multiple times.
 
 Without normalization, several variations of the same URL would be treated as different pages.
 
-### What We Skip
+<!-- ### What We Skip
 
 - URL encoding variations (`%20` vs space)
 - Default ports (`:80`, `:443`)
-- `www` vs non-`www` differences
+- `www` vs non-`www` differences -->
 
 ---
 
@@ -297,8 +260,8 @@ This approach is simple, fast, and works well for well-formed HTML.
 | | `getPage()` | O(1) | O(1) | O(1) | HashMap lookup followed by file read. |
 | | `getURLByID()` | O(1) | O(1) | O(1) | HashMap lookup. |
 | **Crawler** | `crawl()` | O(P × (L + E)) | O(P × (L + E)) | O(P × (L + E)) | **P** = pages crawled, **L** = HTML length, **E** = links per page. |
-| **URL Normalization** | `normalizeURL()` | O(k) | O(k) | O(k) | **k** = URL string length. String operations. |
-| **Link Extraction** | `extractLinks()` | O(n) | O(n) | O(n) | **n** = HTML length. Parses the entire HTML string. |
+<!-- | **URL Normalization** | `normalizeURL()` | O(k) | O(k) | O(k) | **k** = URL string length. String operations. |
+| **Link Extraction** | `extractLinks()` | O(n) | O(n) | O(n) | **n** = HTML length. Parses the entire HTML string. | -->
 
 ---
 
@@ -385,10 +348,7 @@ This approach is simple, fast, and works well for well-formed HTML.
 
 - Persistent storage.
 - Data survives program termination.
-- Easy to debug because every page is stored as an individual text file.
-- Memory safe for very large crawls.
 - Compatible with the Indexer.
-- Supports sequential access using `getURLByID()`.
 - Fast URL lookup using a HashMap.
 
 ### Rejected Alternative
@@ -400,7 +360,6 @@ This approach is simple, fast, and works well for well-formed HTML.
 - Data disappears when the program exits.
 - Memory usage becomes enormous.
 - Large crawls may consume several gigabytes of RAM.
-- Not suitable for production-scale crawling.
 
 ---
 
@@ -494,93 +453,5 @@ Example:
 - Goes deep before exploring sibling pages.
 - May miss many important shallow pages.
 - Less suitable for an Indexer that requires broad website coverage.
-
----
-
-## Decision 7 – Why Linked List Over DynamicArray
-
-### Key Advantages of Linked List for Frontier
-
-#### 1. No Resizing Overhead
-
-DynamicArray occasionally doubles its capacity, copying every element into a larger array.
-
-Linked List never performs such expensive resize operations.
-
----
-
-#### 2. True O(1) Operations
-
-Both `push()` and `pop()` are always **O(1)**.
-
-No amortized costs.
-
----
-
-#### 3. Memory Efficiency
-
-No overallocation.
-
-Each node stores only:
-
-- One `URLDepth`
-- One pointer to the next node
-
-DynamicArray may allocate up to twice the required capacity.
-
----
-
-#### 4. No Compaction Needed
-
-DynamicArray queues often leave unused space at the front and eventually require compaction.
-
-Linked List naturally avoids this problem.
-
----
-
-#### 5. Simpler Implementation
-
-No need to manage:
-
-- Capacity
-- Indices
-- Resizing
-- Compaction logic
-
----
-
-#### 6. Flexible Growth
-
-The queue can grow indefinitely.
-
-Each node is allocated independently on the heap.
-
----
-
-### Trade-off Consideration
-
-#### Cache Locality
-
-Linked List nodes are scattered in memory.
-
-This may cause cache misses.
-
-However, in a web crawler, **network I/O dominates execution time**, making this drawback relatively unimportant.
-
----
-
-#### Memory Overhead
-
-Each node stores one pointer.
-
-On a 64-bit system:
-
-- Pointer size = **8 bytes**
-
-For **100,000 URLs**:
-
-- Additional memory ≈ **0.8 MB**
-
-This overhead is acceptable.
 
 ---
