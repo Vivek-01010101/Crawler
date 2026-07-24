@@ -2,7 +2,7 @@
 #include <iostream>
 
 Crawler::Crawler()
-    : storage("pages")
+    : storage()
 {
 }
 

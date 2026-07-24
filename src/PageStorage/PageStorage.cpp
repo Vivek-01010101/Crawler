@@ -1,79 +1,120 @@
 #include "../../include/PageStorage.h"
-#include <fstream>
-#include <sstream>
+#include <sqlite3.h>
 #include <iostream>
-#include <sys/stat.h>
-#include <unistd.h>
 
-PageStorage::PageStorage(const std::string& dir) 
-    : storageDir(dir), nextId(1) {
-    ensureDirectoryExists();
-}
-
-PageStorage::~PageStorage() {}
-
-void PageStorage::ensureDirectoryExists() const {
-    struct stat st;
-    if (stat(storageDir.c_str(), &st) == -1) {
-        mkdir(storageDir.c_str(), 0777);
-    }
-}
-
-std::string PageStorage::getFilePath(int id) const {
-    return storageDir + "/" + std::to_string(id);
-}
-
-void PageStorage::storePage(const std::string& url, const std::string& html, int depth) {
-    if (urlToId.contains(url)) {
+PageStorage::PageStorage()
+{
+    if (sqlite3_open("../Database/crawler.db", &db) != SQLITE_OK)
+    {
+        std::cerr << "Failed to open database.\n";
         return;
     }
-    
-    int id = nextId++;
-    urlToId.put(url, id);
-    
-    std::string filePath = getFilePath(id);
-    std::ofstream file(filePath);
-    
-    if (file.is_open()) {
-        file << url << "\n";
-        file << depth << "\n";
-        file << html;
-        file.close();
-    } else {
-        std::cerr << "Error: Could not open file: " << filePath << std::endl;
-    }
-}
 
-std::string PageStorage::getPage(const std::string& url) const {
-    if (!urlToId.contains(url)) {
-        return "";
+    const char *sql =
+        "CREATE TABLE IF NOT EXISTS pages ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "url TEXT UNIQUE,"
+        "depth INTEGER,"
+        "html TEXT"
+        ");";
+
+    char *errMsg = nullptr;
+
+    if (sqlite3_exec(db, sql, nullptr, nullptr, &errMsg) != SQLITE_OK)
+    {
+        std::cerr << "SQL Error: " << errMsg << std::endl;
+        sqlite3_free(errMsg);
     }
     
-    int id = urlToId.get(url);
-    std::string filePath = getFilePath(id);
-    std::ifstream file(filePath);
-    
-    if (file.is_open()) {
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        std::string content = buffer.str();
-        
-        size_t pos = content.find('\n');
-        if (pos != std::string::npos) {
-            pos = content.find('\n', pos + 1);
-            if (pos != std::string::npos) {
-                return content.substr(pos + 1);
-            }
-        }
-        return "";
+}
+
+PageStorage::~PageStorage()
+{
+    sqlite3_close(db);
+}
+
+void PageStorage::storePage(const std::string &url,
+                            const std::string &html,
+                            int depth)
+{
+    sqlite3_stmt *stmt;
+
+    const char *sql =
+        "INSERT OR IGNORE INTO pages(url, depth, html) "
+        "VALUES(?, ?, ?);";
+
+    sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+
+    sqlite3_bind_text(stmt, 1, url.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(stmt, 2, depth);
+    sqlite3_bind_text(stmt, 3, html.c_str(), -1, SQLITE_TRANSIENT);
+
+    sqlite3_step(stmt);
+
+    sqlite3_finalize(stmt);
+}
+
+std::string PageStorage::getPage(const std::string &url) const
+{
+    sqlite3_stmt *stmt;
+
+    const char *sql =
+        "SELECT html FROM pages WHERE url=?;";
+
+    sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+
+    sqlite3_bind_text(stmt, 1, url.c_str(), -1, SQLITE_TRANSIENT);
+
+    std::string html;
+
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        const unsigned char *text = sqlite3_column_text(stmt, 0);
+
+        if (text)
+            html = reinterpret_cast<const char *>(text);
     }
-    return "";
+
+    sqlite3_finalize(stmt);
+
+    return html;
 }
 
-bool PageStorage::hasPage(const std::string& url) const {
-    return urlToId.contains(url);
+bool PageStorage::hasPage(const std::string &url) const
+{
+    sqlite3_stmt *stmt;
+
+    const char *sql =
+        "SELECT 1 FROM pages WHERE url=? LIMIT 1;";
+
+    sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+
+    sqlite3_bind_text(stmt, 1, url.c_str(), -1, SQLITE_TRANSIENT);
+
+    bool exists = (sqlite3_step(stmt) == SQLITE_ROW);
+
+    sqlite3_finalize(stmt);
+
+    return exists;
 }
 
-int PageStorage::pageCount() const {
-    return urlToId.size();
+int PageStorage::pageCount() const
+{
+    sqlite3_stmt *stmt;
+
+    const char *sql =
+        "SELECT COUNT(*) FROM pages;";
+
+    sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
+
+    int count = 0;
+
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        count = sqlite3_column_int(stmt, 0);
+    }
+
+    sqlite3_finalize(stmt);
+
+    return count;
 }

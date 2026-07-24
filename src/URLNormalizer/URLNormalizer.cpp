@@ -7,48 +7,72 @@ URLNormalizer::URLNormalizer()
 std::string URLNormalizer::normalize(const std::string& baseURL,
                                      const std::string& url)
 {
-    std::string result = url;
+    // Ignore empty
+    if (url.empty())
+        return "";
+
+    // Ignore anchors
+    if (url[0] == '#')
+        return url;
+
+    // Ignore mailto
+    if (url.find("mailto:") == 0)
+        return url;
+
+    // Ignore javascript
+    if (url.find("javascript:") == 0)
+        return url;
+
+    // Ignore tel
+    if (url.find("tel:") == 0)
+        return url;
 
     // Absolute URL
-    if (result.find("http://") == 0 ||
-        result.find("https://") == 0)
+    if (url.find("http://") == 0 ||
+        url.find("https://") == 0)
     {
-        // Keep as is
+        std::string result = url;
+
+        // Remove fragment
+        size_t hash = result.find('#');
+        if (hash != std::string::npos)
+            result = result.substr(0, hash);
+
+        // Remove trailing slash
+        if (result.length() > 1 && result.back() == '/')
+            result.pop_back();
+
+        return result;
     }
+
+    // Extract domain
+    std::string domain = getDomain(baseURL);
+
+    std::string result;
 
     // Root-relative URL
-    else if (!result.empty() && result[0] == '/')
+    if (url[0] == '/')
     {
-        // Find the first '/' after "http://" or "https://"
-        size_t start = baseURL.find("//");
-
-        if (start != std::string::npos)
-        {
-            start += 2; // Move past "//"
-
-            size_t pos = baseURL.find('/', start);
-
-            if (pos != std::string::npos)
-                result = baseURL.substr(0, pos) + result;
-            else
-                result = baseURL + result;
-        }
+        result = domain + url;
     }
-
-    // Relative URL
+    // else
+    // {
+    //     // Relative URL
+    //     result = domain + "/" + url;
+    // }
     else
     {
-        size_t pos = baseURL.rfind('/');
+        std::string resultBase = baseURL;
 
-        if (pos != std::string::npos)
-            result = baseURL.substr(0, pos + 1) + result;
-        else
-            result = baseURL + "/" + result;
+        // Remove trailing slash from base if present
+        if (!resultBase.empty() && resultBase.back() == '/')
+            resultBase.pop_back();
+
+        result = resultBase + "/" + url;
     }
 
-    // Remove fragment (#section)
+    // Remove fragment
     size_t hash = result.find('#');
-
     if (hash != std::string::npos)
         result = result.substr(0, hash);
 
